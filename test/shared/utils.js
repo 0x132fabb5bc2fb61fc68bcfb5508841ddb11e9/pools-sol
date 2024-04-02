@@ -22,7 +22,7 @@ function shuffleArray(array) {
 }
 
 const generateWithdrawData = async (i, fixture, withdrawalOverrides = {}, accesListType = 0) => {
-    const { assetMetadata, depositTree, emptyBlocklist, hackerBlocklist, recipients, relayer, secrets } = fixture;
+    const { assetMetadata, depositTree, pathOverride, emptyBlocklist, hackerBlocklist, recipients, relayer, secrets } = fixture;
 
     // Default inputs
     const { address: recipient } = recipients[i];
@@ -50,24 +50,24 @@ const generateWithdrawData = async (i, fixture, withdrawalOverrides = {}, accesL
 
     // private inputs
     const secret = secrets[i];
-    const path = i;
+    const path = +(pathOverride || i);
     const { pathElements: mainProof, pathRoot: root } =
         await depositTree.path(path);
-    const { pathElements: subsetProof, pathRoot: subsetRoot } = 
+    const { pathElements: subsetProof, pathRoot: subsetRoot } =
         await (accesListType === ACCESS_LIST_TYPE.Empty ? emptyBlocklist : hackerBlocklist).path(path);
-    
+
     // public inputs
-    const nullifier = poseidon([secret, 1, i]);
+    const nullifier = poseidon([secret, 1, path]);
     const withdrawMetadata = utils.hashMod(
         ["address", "uint256", "address", "uint256", "uint256", "uint8", "uint24", "bytes"],
         [
-            withdrawalData.recipient, 
-            withdrawalData.refund, 
-            withdrawalData.relayer, 
-            withdrawalData.fee, 
-            withdrawalData.deadline, 
-            withdrawalData.accessType, 
-            withdrawalData.bitLength, 
+            withdrawalData.recipient,
+            withdrawalData.refund,
+            withdrawalData.relayer,
+            withdrawalData.fee,
+            withdrawalData.deadline,
+            withdrawalData.accessType,
+            withdrawalData.bitLength,
             withdrawalData.subsetData
         ]
     );
@@ -90,7 +90,7 @@ const generateWithdrawData = async (i, fixture, withdrawalOverrides = {}, accesL
         wasmFileName: WASM_FNAME,
         zkeyFileName: ZKEY_FNAME
     });
-    
+
     if (!await verifyProof({
         proof,
         publicSignals,
@@ -118,6 +118,7 @@ const generateWithdrawData = async (i, fixture, withdrawalOverrides = {}, accesL
             deadline: withdrawalData.deadline,
         },
         feeReceiver: withdrawalData.feeReceiver,
+        secret,
     };
 };
 
