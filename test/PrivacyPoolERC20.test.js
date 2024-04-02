@@ -3,7 +3,7 @@ const { ethers } = require('hardhat');
 const { setStorageAt, loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
 const { poseidon, utils } = require('../lib/index');
 const { setNextBlockTimestamp } = require('../scripts/hardhat.utils');
-const { deployedFixture, deployedAndDepositedFixture } = require("./shared/fixtures");
+const { deployedFixture, deployedAndDepositedFixture, deployedFixtureSameCommitment } = require("./shared/fixtures");
 const { generateWithdrawData, padLeftHash, verifyWithdrawal } = require("./shared/utils");
 const {
     ACCESS_LIST_TYPE,
@@ -100,17 +100,6 @@ describe('PrivacyPool.sol ERC20 token deposits', function () {
                 value: 1,
             })).to.be.revertedWithCustomError(privacyPool, 'PrivacyPool__MsgValueInvalid')
         })
-        it('fails if commitment is used twice', async () => {
-            const index = 0
-            const signer = signers[index];
-            await expect(asset.connect(signer).approve(privacyPool.address, ethers.constants.MaxUint256))
-                .to.emit(asset, 'Approval')
-            await expect(privacyPool.connect(signer).deposit(padLeftHash(rawCommitments[index])))
-                .to.emit(privacyPool, 'Deposit')
-            await expect(privacyPool.connect(signer).deposit(padLeftHash(rawCommitments[index])))
-                .to.be.revertedWithCustomError(privacyPool, 'PrivacyPool__CommitmentAlreadyUsed')
-        })
-
 
         it('anyone can deposit', async () => {
             // check empty root before any deposits
@@ -213,6 +202,63 @@ describe('PrivacyPool.sol ERC20 token deposits', function () {
             );
         }).timeout(WITHDRAWALS_TIMEOUT);
     });
+    describe('same commitments', function () {
+        let fix;
+        let asset;
+        let signers;
+        let relayer;
+        let depositTree;
+        let privacyPool;
+        let commitments;
+        let rawCommitments;
+        const deployedFx = deployedFixtureSameCommitment(POOL_TYPE.Token);
+        beforeEach(async function () {
+            const fixture = await loadFixture(deployedFx);
+            fix = fixture
+            asset = fix.asset
+            signers = fix.signers
+            relayer = fix.relayer
+            depositTree = fix.depositTree
+            privacyPool = fix.privacyPool
+            commitments = fix.commitments
+            rawCommitments = fix.rawCommitments
+        })
+        it('allows commitment to be used twice', async () => {
+            const index = 0
+            const secretIndex = 0
+            const signer = signers[index];
+            // approve tokens to move
+            await expect(asset.connect(signer).approve(privacyPool.address, ethers.constants.MaxUint256))
+                .to.emit(asset, 'Approval')
+
+            // insert first commitment
+            await depositTree.insert(commitments[index]);
+            await expect(privacyPool.connect(signer).deposit(padLeftHash(rawCommitments[index])))
+                .to.emit(privacyPool, 'Deposit')
+
+            // insert second commitment
+            await depositTree.insert(commitments[index]);
+            await expect(privacyPool.connect(signer).deposit(padLeftHash(rawCommitments[index])))
+                .to.emit(privacyPool, 'Deposit')
+
+            const withdrawData0 = await generateWithdrawData(secretIndex, fix);
+            await expect(privacyPool.connect(relayer).withdraw({
+                proof: withdrawData0.proof,
+                feeReceiver: withdrawData0.feeReceiver,
+            }, { value: withdrawData0.refund }))
+            .to.emit(privacyPool, 'Withdrawal')
+            const withdrawData1 = await generateWithdrawData(secretIndex, {
+                ...fix,
+                pathOverride: 1, // index in the tree
+            });
+            await expect(privacyPool.connect(relayer).withdraw({
+                proof: withdrawData1.proof,
+                feeReceiver: withdrawData1.feeReceiver,
+            }, { value: withdrawData1.refund }))
+            .to.emit(privacyPool, 'Withdrawal')
+            expect(withdrawData0.secret).to.equal(withdrawData1.secret)
+        })
+    })
 
     describe('withdrawals', () => {
         let fix;

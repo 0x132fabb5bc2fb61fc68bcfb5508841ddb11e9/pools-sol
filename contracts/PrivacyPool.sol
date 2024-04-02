@@ -64,7 +64,6 @@ contract PrivacyPool is
     error PrivacyPool__FeeExceedsDenomination();
     error PrivacyPool__InvalidZKProof();
     error PrivacyPool__MsgValueInvalid();
-    error PrivacyPool__CommitmentAlreadyUsed();
     error PrivacyPool__NoteAlreadySpent();
     error PrivacyPool__UnknownRoot();
     error PrivacyPool__ZeroAddress();
@@ -78,7 +77,6 @@ contract PrivacyPool is
     bytes32 public immutable assetMetadata;
     // double spend records
     mapping(bytes32 => bool) public nullifiers;
-    mapping(bytes32 => bool) public commitments;
 
     constructor(address poseidon, address _asset, uint256 _denomination) IncrementalMerkleTree(poseidon) {
         if (poseidon == address(0)) {
@@ -107,10 +105,6 @@ contract PrivacyPool is
     }
 
     function _insertCommitment(bytes32 commitment) internal returns (uint256) {
-        if (commitments[commitment]) {
-            revert PrivacyPool__CommitmentAlreadyUsed();
-        }
-        commitments[commitment] = true;
         bytes32 leaf = hasher.poseidon([commitment, assetMetadata]);
         uint256 leafIndex = insert(leaf);
 
@@ -126,8 +120,7 @@ contract PrivacyPool is
 
     function _requireTokenTranches(uint256 count) internal {
         if (asset == NATIVE) {
-            uint256 value = msg.value;
-            if ((value != (value / count) * count) || (value / count != denomination)) {
+            if (msg.value != denomination * count) {
                 revert PrivacyPool__MsgValueInvalid();
             }
         } else {

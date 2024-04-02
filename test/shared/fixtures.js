@@ -105,6 +105,85 @@ function deployedFixture(poolType) {
     };
 }
 
+function deployedFixtureSameCommitment(poolType) {
+    return async function fixtureFunc() {
+        // Deployment and initialization
+        const poseidonContract = await deployPoseidonContract();
+        const signersAll = await ethers.getSigners();
+        const signers = (new Array(N_DEPOSITS)).fill(signersAll[0])
+        const asset = await deployAsset(poolType);
+        const assetAddress = initializeAssetAddress(poolType, asset);
+        const denomination = ethers.utils.parseEther("1").toBigInt();
+        const privacyPool = await deploy("PrivacyPool", [poseidonContract.address, assetAddress, denomination]);
+        const assetMetadata = utils.hashMod(["address", "uint"], [assetAddress, denomination]);
+
+        // random secrets and commitments
+        const secrets = utils.unsafeRandomLeaves(N_DEPOSITS);
+        const rawCommitments = new Array(N_DEPOSITS);
+        const commitments = new Array(N_DEPOSITS);
+        secrets.forEach((secret, i) => {
+            rawCommitments[i] = poseidon([secret]);
+            commitments[i] = poseidon([rawCommitments[i], assetMetadata]);
+        });
+
+        const goodSigners = signers;
+
+        // Create deposit tree
+        const depositTree = new MerkleTree({
+            hasher: poseidon,
+            levels: 20,
+            baseString: "empty"
+        });
+
+        // Create multi-deposit tree
+        const multiDepositTree = new MerkleTree({
+            hasher: poseidon,
+            levels: 20,
+            baseString: "empty"
+        });
+
+        // Create empty and hacker blocklists
+        const emptyBlocklist = new AccessList({ treeType: "blocklist", subsetString: "" });
+        emptyBlocklist.allow(N_DEPOSITS);
+        const hackerBlocklist = new AccessList({ treeType: "blocklist", subsetString: "" });
+
+        // Create recipients and withdrawal order
+        const recipients = new Array(N_DEPOSITS);
+        const withdrawalOrder = new Array(N_DEPOSITS);
+        for (let i = 0; i < N_DEPOSITS; i++) {
+            recipients[i] = ethers.Wallet.createRandom();
+            withdrawalOrder[i] = i;
+        }
+        shuffleArray(withdrawalOrder);
+
+        // Create and fund a relayer address
+        const relayer = ethers.Wallet.createRandom().connect(ethers.provider);
+        await setBalance(relayer.address, ethers.utils.parseEther("1000000"));
+
+        return {
+            asset,
+            assetAddress,
+            assetMetadata,
+            badSigners: [],
+            commitments,
+            denomination,
+            depositTree,
+            emptyBlocklist,
+            goodSigners,
+            hackerBlocklist,
+            multiDepositTree,
+            poseidonContract,
+            privacyPool,
+            rawCommitments,
+            recipients,
+            relayer,
+            secrets,
+            signers,
+            withdrawalOrder,
+        };
+    };
+}
+
 function deployedAndDepositedFixture(poolType) {
     const deployedFx = deployedFixture(poolType);
     return async function fixtureFunc() {
@@ -182,4 +261,5 @@ function deployedAndDepositedFixture(poolType) {
 module.exports = {
     deployedFixture,
     deployedAndDepositedFixture,
+    deployedFixtureSameCommitment,
 };
