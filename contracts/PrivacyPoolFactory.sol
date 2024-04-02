@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.17;
+pragma solidity 0.8.24;
 
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./PrivacyPool.sol";
 import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -14,12 +14,10 @@ contract PrivacyPoolFactory is ReentrancyGuard {
 
     error PreviousPoolTreeLimitNotReached(address asset, uint256 power);
     error PoolInputNotAllowed(address asset, uint256 power);
-    error PoolUnknown(address asset, uint256 power, uint256 index);
-    error WithdrawFailed();
 
     address constant public NATIVE = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
     uint256 constant public MAX_TREE_LIMIT = 1048576;
-    address public poseidon;
+    address public immutable poseidon;
 
     // All existing pools grouped by asset and power (10**x).
     // asset => power => pools[]

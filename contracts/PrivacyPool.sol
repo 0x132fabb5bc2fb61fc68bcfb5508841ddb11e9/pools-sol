@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.17;
+pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 import "./IncrementalMerkleTree.sol";
 import "./verifiers/withdraw_from_subset_verifier.sol";
@@ -74,10 +74,11 @@ contract PrivacyPool is
     address public immutable asset;
     // denomination of deposits and withdrawals for this pool
     uint256 public immutable denomination;
+    bytes32 public immutable assetMetadata;
     // double spend records
     mapping(bytes32 => bool) public nullifiers;
 
-    constructor(address poseidon, address _asset, uint256 _denomination) ReentrancyGuard() IncrementalMerkleTree(poseidon) {
+    constructor(address poseidon, address _asset, uint256 _denomination) IncrementalMerkleTree(poseidon) {
         if (poseidon == address(0)) {
             revert PrivacyPool__ZeroAddress();
         }
@@ -89,6 +90,7 @@ contract PrivacyPool is
             revert PrivacyPool__DenominationInvalid();
         }
         denomination = _denomination;
+        assetMetadata = bytes32(abi.encodePacked(asset, denomination).snarkHash());
     }
 
     /// @notice Deposits a single commitment ensuring its validity
@@ -98,11 +100,11 @@ contract PrivacyPool is
     /// @param commitment The single commitment to reference in the future
     /// @return leafIndex The location in the tree where the commitment was stored
     function deposit(bytes32 commitment) external payable nonReentrant returns(uint256) {
-        return _deposit(msg.value, commitment);
+        _requireTokenTranches(1);
+        return _insertCommitment(commitment);
     }
 
-    function _deposit(uint256 value, bytes32 commitment) internal returns (uint256) {
-        bytes32 assetMetadata = bytes32(abi.encodePacked(asset, denomination).snarkHash());
+    function _insertCommitment(bytes32 commitment) internal returns (uint256) {
         bytes32 leaf = hasher.poseidon([commitment, assetMetadata]);
         uint256 leafIndex = insert(leaf);
 
@@ -113,16 +115,20 @@ contract PrivacyPool is
             denomination,
             leafIndex
         );
+        return leafIndex;
+    }
 
+    function _requireTokenTranches(uint256 count) internal {
         if (asset == NATIVE) {
-            if (value != denomination) revert PrivacyPool__MsgValueInvalid();
-        } else {
-            if (value != 0) {
+            if (msg.value != denomination * count) {
                 revert PrivacyPool__MsgValueInvalid();
             }
-            IERC20(asset).safeTransferFrom(msg.sender, address(this), denomination);
+        } else {
+            if (msg.value != 0) {
+                revert PrivacyPool__MsgValueInvalid();
+            }
+            IERC20(asset).safeTransferFrom(msg.sender, address(this), denomination * count);
         }
-        return leafIndex;
     }
 
     /// @notice Allows the caller to deposit multiple times into the contract
@@ -130,18 +136,19 @@ contract PrivacyPool is
     /// It enforces particular value denominations to ensure correctness of deposits
     /// For native tokens, the total value sent must equal the denomination multiplied by the number of commitments
     /// For ERC20 tokens, the value must be zero
-    /// @param commitments An array of commitments to be passed into _deposit
+    /// @param inputs An array of commitments to be passed into _deposit
     /// @return leafIndices A set of leaf indices, with the same length as the commitments
     function depositMany(
-        bytes32[] calldata commitments
+        bytes32[] calldata inputs
     ) external payable nonReentrant returns(uint256[] memory leafIndices) {
-        uint256 value = msg.value / commitments.length;
-        leafIndices = new uint256[](commitments.length);
+        uint256 len = inputs.length;
+        leafIndices = new uint256[](len);
         uint256 i;
+        _requireTokenTranches(len);
         do {
-            leafIndices[i] = _deposit(value, commitments[i]);
+            leafIndices[i] = _insertCommitment(inputs[i]);
             unchecked { ++i; }
-        } while(i < commitments.length);
+        } while(i < len);
         return leafIndices;
     }
 
@@ -155,7 +162,6 @@ contract PrivacyPool is
         if (proof.recipient == address(0)) {
             revert PrivacyPool__ZeroAddress();
         }
-        uint256 assetMetadata = abi.encodePacked(asset, denomination).snarkHash();
         uint256 withdrawMetadata = abi
             .encodePacked(
                 proof.recipient,
@@ -173,7 +179,7 @@ contract PrivacyPool is
                 uint256(proof.root),
                 uint256(proof.subsetRoot),
                 uint256(proof.nullifier),
-                assetMetadata,
+                uint256(assetMetadata),
                 withdrawMetadata
             )
         ) revert PrivacyPool__InvalidZKProof();
