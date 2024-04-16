@@ -14,7 +14,7 @@ contract IncrementalMerkleTree {
     // length of roots history
     uint256 public constant ROOTS_CAPACITY = 30;
     // index of next leaf to be inserted
-    uint256 public currentLeafIndex = 0;
+    uint256 public currentLeafIndex;
     // filled subtrees cached to reconstruct the root
     mapping(uint256 => bytes32) public filledSubtrees;
     // historic roots (only holds up to ROOTS_CAPACITY roots)

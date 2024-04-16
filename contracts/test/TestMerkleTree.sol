@@ -26,13 +26,13 @@ contract TestMerkleTree {
     // solhint-disable-next-line func-visibility
     constructor(address poseidon) {
         hasher = IPoseidon(poseidon);
-        for (uint256 i = 0; i < LEVELS; ) {
+        uint256 i;
+        do {
             z[i] = zeros(i);
-            // filledSubtrees[i] = zeros(i);
             unchecked {
                 ++i;
             }
-        }
+        } while (i < LEVELS);
         roots[0] = zeros(20);
     }
 
@@ -43,14 +43,15 @@ contract TestMerkleTree {
     function isKnownRoot(uint256 root) public view returns (bool) {
         if (root == 0) return false;
         uint256 checkIndex = currentRootIndex;
-        for (uint256 i = 0; i < ROOTS_CAPACITY; ) {
+        uint256 i;
+        do {
             if (root == roots[checkIndex]) return true;
             if (checkIndex == 0) checkIndex = ROOTS_CAPACITY;
             unchecked {
                 ++i;
                 --checkIndex;
             }
-        }
+        } while (i < ROOTS_CAPACITY);
         return false;
     }
 
@@ -136,7 +137,8 @@ contract TestMerkleTree {
     ) public {
         uint256 latestIndex = currentLeafIndex - 1;
         if (oldIndex > latestIndex) revert IndexOutOfRange();
-        for (uint256 i = 0; i < 20; ) {
+        uint256 i;
+        do {
             if ((oldIndex >> i) & 1 == 0) {
                 if (wtf(oldIndex, i) == wtf(latestIndex, i)) {
                     filledSubtrees[i] = newLeaf;
@@ -150,7 +152,7 @@ contract TestMerkleTree {
             unchecked {
                 ++i;
             }
-        }
+        } while(i < 20);
         uint256 _currentRootIndex = currentRootIndex;
         if (oldLeaf != roots[_currentRootIndex]) revert UnknownRoot();
         roots[_currentRootIndex] = newLeaf;
@@ -162,7 +164,8 @@ contract TestMerkleTree {
 
         uint256 left;
         uint256 right;
-        for (uint256 i = 0; i < LEVELS; ) {
+        uint256 i;
+        do {
             if (((checkIndex >> i) & 1) == 0) {
                 left = leaf;
                 right = zeros(i);
@@ -175,7 +178,7 @@ contract TestMerkleTree {
             unchecked {
                 ++i;
             }
-        }
+        } while(i < LEVELS);
         unchecked {
             uint256 rootIndex = addmod(currentRootIndex, 1, ROOTS_CAPACITY);
             currentRootIndex = rootIndex;
@@ -190,7 +193,8 @@ contract TestMerkleTree {
         if (checkIndex == 1 << LEVELS) revert MerkleTreeCapacity();
         uint256 left;
         uint256 right;
-        for (uint256 i = 0; i < LEVELS; ) {
+        uint256 i;
+        do {
             if ((checkIndex >> i) & 1 == 0) {
                 left = leaf;
                 right = z[i];
@@ -203,7 +207,7 @@ contract TestMerkleTree {
             unchecked {
                 ++i;
             }
-        }
+        } while(i < LEVELS);
         unchecked {
             uint256 rootIndex = addmod(currentRootIndex, 1, ROOTS_CAPACITY);
             currentRootIndex = rootIndex;

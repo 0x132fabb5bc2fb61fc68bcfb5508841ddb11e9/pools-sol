@@ -2,9 +2,9 @@ const { expect } = require('chai');
 const { ethers } = require('hardhat');
 const { setStorageAt, loadFixture } = require('@nomicfoundation/hardhat-network-helpers');
 const { poseidon, utils } = require('../lib/index');
-const { deploy, setNextBlockTimestamp } = require('../scripts/hardhat.utils');
-const { deployedFixture, deployedAndDepositedFixture } = require("./shared/fixtures");
-const { generateWithdrawData, padLeftHash, verifyWithdrawal } = require("./shared/utils");
+const { deploy, setNextBlockTimestamp, getPoolAddress } = require('../scripts/hardhat.utils');
+const { deployedFixture, deployedAndDepositedFixture, deployAsset, fillStorage } = require("./shared/fixtures");
+const { generateWithdrawData, padLeftHash, verifyWithdrawal, shuffleArray } = require("./shared/utils");
 const {
     ACCESS_LIST_TYPE,
     AVG_BLOCK_TIME,
@@ -33,6 +33,78 @@ describe('PrivacyPool.sol Native token deposits', function () {
                 .to.be.revertedWithCustomError(privacyPool, 'PrivacyPool__ZeroAddress')
             await expect(privacyPoolFactory.deploy(poseidonContract.address, hre.ethers.constants.AddressZero, denomination, overrides))
                 .to.be.revertedWithCustomError(privacyPool, 'PrivacyPool__ZeroAddress')
+        })
+        it('uses create2 opcode to create pools', async () => {
+            const { assetAddress, denomination, poseidonContract, privacyPoolFactory, privacyPool } = fixture
+            expect(getPoolAddress({
+                poseidonAddress: poseidonContract.address,
+                factoryAddress: privacyPoolFactory.address,
+                assetAddress,
+                denomination,
+                index: 0,
+            })).to.equal(privacyPool.address)
+        })
+        it('will always produce the same addresses given the same addresses', async () => {
+            let { privacyPoolFactory, poseidonContract } = fixture
+            let factoryAddress = privacyPoolFactory.address
+            let tokenA = await deployAsset(POOL_TYPE.Token)
+            let tokenB = await deployAsset(POOL_TYPE.Token)
+            const tokens = [tokenA, tokenB]
+            const powers = [0, 1]
+            const each = async (fn) => await Promise.all(tokens.map((t) => Promise.all(powers.map(p => fn(t, p)))))
+            const gen = (assetAddress, p, index) => getPoolAddress({
+                poseidonAddress: poseidonContract.address,
+                factoryAddress,
+                assetAddress,
+                denomination: 10n**BigInt(p),
+                index,
+            })
+            const checkPoolAddresses = async (t, p) => {
+                const len = await privacyPoolFactory.poolGroupLength(t.address, p)
+                await Promise.all((new Array(len)).fill(null).map(async (_v, i) => {
+                    await expect(privacyPoolFactory.poolGroups(t.address, p, i))
+                        .eventually.to.deep.equal(gen(t.address, p, i))
+                }))
+            }
+            const createFromOrder = async (order, i) => {
+                await Promise.all(order.map(async ([t, p]) => {
+                    await expect(privacyPoolFactory.createPool(t.address, p))
+                        .to.emit(privacyPoolFactory, 'PrivacyPoolCreated')
+                        .withArgs(
+                            gen(t.address, p, i),
+                            t.address,
+                            10n**BigInt(p),
+                        )
+                }))
+            }
+            const order0 = [].concat(...shuffleArray(await each((t, p) => [t, p])))
+            const order1 = [].concat(...shuffleArray(await each((t, p) => [t, p])))
+            // create an initial set
+            await createFromOrder(order0, 0)
+            // fill up pools
+            await each((t, p) => fillStorage(gen(t.address, p, 0)))
+            // create new pools
+            await createFromOrder(order1, 1)
+            // check generated
+            await each(checkPoolAddresses)
+            fixture = await loadFixture(deployedFx);
+            privacyPoolFactory = fixture.privacyPoolFactory
+
+            tokenA = await deployAsset(POOL_TYPE.Token)
+            tokenB = await deployAsset(POOL_TYPE.Token)
+            // same factory, different order
+            expect(privacyPoolFactory.address).to.equal(factoryAddress)
+
+            const order2 = [].concat(...shuffleArray(await each((t, p) => [t, p])))
+            const order3 = [].concat(...shuffleArray(await each((t, p) => [t, p])))
+            // create an initial set
+            await createFromOrder(order2, 0)
+            // fill up pools
+            await each((t, p) => fillStorage(gen(t.address, p, 0)))
+            // create new pools
+            await createFromOrder(order3, 1)
+            // check generated
+            await each(checkPoolAddresses)
         })
         it('cannot be sent native token', async () => {
             await expect(fixture.signers[0].sendTransaction({

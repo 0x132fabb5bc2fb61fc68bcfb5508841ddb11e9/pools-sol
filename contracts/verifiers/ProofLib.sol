@@ -108,7 +108,8 @@ library ProofLib {
         if (elements != p2.length) revert ProofLib__PairingLengthsFailed();
         uint256 inputSize = elements * 6;
         uint256[] memory input = new uint256[](inputSize);
-        for (uint256 i = 0; i < elements; i++) {
+        uint256 i;
+        do {
             unchecked {
                 input[i * 6 + 0] = p1[i].x;
                 input[i * 6 + 1] = p1[i].y;
@@ -116,8 +117,9 @@ library ProofLib {
                 input[i * 6 + 3] = p2[i].x[1];
                 input[i * 6 + 4] = p2[i].y[0];
                 input[i * 6 + 5] = p2[i].y[1];
+                ++i;
             }
-        }
+        } while(i < elements);
         uint256[1] memory out;
         bool success;
         // solhint-disable-next-line no-inline-assembly

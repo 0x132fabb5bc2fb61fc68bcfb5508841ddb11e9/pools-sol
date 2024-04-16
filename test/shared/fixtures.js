@@ -1,11 +1,11 @@
-const { ethers } = require("hardhat");
-const { poseidonContract: poseidonCon } = require("circomlibjs");
-const { setBalance } = require("@nomicfoundation/hardhat-network-helpers");
-const { setNextBlockTimestamp } = require("@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time");
+const { setNextBlockTimestamp } = require("@nomicfoundation/hardhat-network-helpers/dist/src/helpers/time")
+const { ethers } = require("hardhat")
+const { poseidonContract: poseidonCon } = require("circomlibjs")
+const { setBalance, setStorageAt } = require("@nomicfoundation/hardhat-network-helpers")
+const { AVG_BLOCK_TIME, HACKER_RATIO, N_DEPOSITS, POOL_TYPE, NATIVE } = require("./constants")
+const { padLeftHash, shuffleArray } = require("./utils")
 const { poseidon, MerkleTree, AccessList, utils } = require("../../lib/index");
 const { deploy, deployBytes } = require('../../scripts/hardhat.utils');
-const { AVG_BLOCK_TIME, HACKER_RATIO, N_DEPOSITS, POOL_TYPE, NATIVE } = require("./constants");
-const { padLeftHash, shuffleArray } = require("./utils");
 
 async function deployPoseidonContract() {
     return await deployBytes(
@@ -29,9 +29,14 @@ function deployedFixture(poolType) {
         const poseidonContract = await deployPoseidonContract();
         const signers = await ethers.getSigners();
         const asset = await deployAsset(poolType);
+        const power = 18
         const assetAddress = initializeAssetAddress(poolType, asset);
-        const denomination = ethers.utils.parseEther("1").toBigInt();
-        const privacyPool = await deploy("PrivacyPool", [poseidonContract.address, assetAddress, denomination]);
+        const privacyPoolFactory = await deploy("PrivacyPoolFactory", [poseidonContract.address])
+        const tx = await privacyPoolFactory.createPool(assetAddress, power)
+        await tx.wait()
+        const privacyPoolAddress = await privacyPoolFactory.poolGroups(assetAddress, power, 0)
+        const privacyPool = await ethers.getContractAt('PrivacyPool', privacyPoolAddress)
+        const denomination = ethers.utils.parseUnits("1", power).toBigInt();
         const assetMetadata = utils.hashMod(["address", "uint"], [assetAddress, denomination]);
 
         // random secrets and commitments
@@ -95,6 +100,7 @@ function deployedFixture(poolType) {
             multiDepositTree,
             poseidonContract,
             privacyPool,
+            privacyPoolFactory,
             rawCommitments,
             recipients,
             relayer,
@@ -220,7 +226,7 @@ function deployedAndDepositedFixture(poolType) {
             const signer = signers[signerIndex];
 
             let value = 0n;
-            if (poolType === POOL_TYPE.Native) {
+            if (!asset) {
                 value = denomination;
             } else {
                 await asset.transfer(signer.address, denomination);
@@ -258,7 +264,17 @@ function deployedAndDepositedFixture(poolType) {
     };
 }
 
+async function fillStorage(privacyPoolAddress) {
+    return await setStorageAt(
+        privacyPoolAddress,
+        1,
+        2n ** 20n, // 1048576
+    )
+}
+
 module.exports = {
+    deployAsset,
+    fillStorage,
     deployedFixture,
     deployedAndDepositedFixture,
     deployedFixtureSameCommitment,

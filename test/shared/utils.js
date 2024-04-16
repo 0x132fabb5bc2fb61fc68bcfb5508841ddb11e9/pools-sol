@@ -19,6 +19,7 @@ function shuffleArray(array) {
         const j = Math.floor(Math.random() * (i + 1));
         [array[i], array[j]] = [array[j], array[i]];
     }
+    return array
 }
 
 const generateWithdrawData = async (i, fixture, withdrawalOverrides = {}, accesListType = 0) => {
@@ -178,4 +179,4 @@ module.exports = {
     padLeftHash,
     shuffleArray,
     verifyWithdrawal,
-};
+}

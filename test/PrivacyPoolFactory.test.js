@@ -51,8 +51,6 @@ describe("PrivacyPoolFactory.sol", function () {
         const pool = await this.privacyPoolFactory.poolGroups(this.asset, this.power, 0);
         await expect(this.privacyPoolFactory.provider.getCode(pool))
             .eventually.not.to.be.equal('0x');
-
-        await expect(this.privacyPoolFactory.poolGroupByInput(this.asset, this.power)).to.not.be.reverted;
     });
     it('can handle erc20 tokens as well', async () => {
         const asset = await deploy("Token", [ethers.utils.parseEther("1")]);
