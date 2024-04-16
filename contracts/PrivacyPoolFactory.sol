@@ -16,21 +16,12 @@ contract PrivacyPoolFactory is ReentrancyGuard {
     error PoolInputNotAllowed(address asset, uint256 power);
 
     address constant public NATIVE = 0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE;
-    uint256 constant public MAX_TREE_LIMIT = 1048576;
+    uint256 constant public MAX_TREE_LIMIT = 1_048_576; // 2^20
     address public immutable poseidon;
 
     // All existing pools grouped by asset and power (10**x).
     // asset => power => pools[]
-    mapping(address => mapping(uint256 => address[])) public poolGroups;
-
-    /// @notice Returns the list of pools under a given asset and power
-    /// @param asset That is being deposited and withdrawn from the pool
-    /// @param power Number x used in the equation 10**x to determine how much of the
-    /// asset to deposit. This number is limited to 77
-    /// @return pools List with all pool addresses that exist under the same asset and power
-    function poolGroupByInput(address asset, uint256 power) external view returns(address[] memory pools) {
-        pools = poolGroups[asset][power];
-    }
+    mapping(address asset => mapping(uint256 power => address[])) public poolGroups;
 
     /// @notice Returns the length of the group list
     /// @param asset That is being deposited and withdrawn from the pool
@@ -65,20 +56,26 @@ contract PrivacyPoolFactory is ReentrancyGuard {
         }
         uint256 denomination = 10**power;
         uint256 len = poolGroups[asset][power].length;
-        if (len == 0) {
-            // this is the first pool
-            pool = address(new PrivacyPool(poseidon, asset, denomination));
-            poolGroups[asset][power].push(pool);
-            emit PrivacyPoolCreated(pool, asset, denomination);
-        } else {
+        if (len > 0) {
             // only allow to create next pool if the previous pool deposit tree limit is reached
-            PrivacyPool currentPool = PrivacyPool(poolGroups[asset][power][len - 1]);
-            if (currentPool.currentLeafIndex() < MAX_TREE_LIMIT) {
+            if (PrivacyPool(poolGroups[asset][power][len - 1]).currentLeafIndex() < MAX_TREE_LIMIT) {
                 revert PreviousPoolTreeLimitNotReached(asset, power);
             }
-            pool = address(new PrivacyPool(poseidon, asset, denomination));
-            poolGroups[asset][power].push(pool);
-            emit PrivacyPoolCreated(pool, asset, denomination);
         }
+        bytes memory bytecode = abi.encodePacked(
+            type(PrivacyPool).creationCode,
+            abi.encode(poseidon),
+            abi.encode(asset),
+            abi.encode(denomination)
+        );
+        bytes32 salt = keccak256(abi.encodePacked(asset, denomination, len));
+        assembly {
+            pool := create2(0, add(bytecode, 0x20), mload(bytecode), salt)
+            if iszero(extcodesize(pool)) {
+                revert(0, 0)
+            }
+        }
+        poolGroups[asset][power].push(pool);
+        emit PrivacyPoolCreated(pool, asset, denomination);
     }
 }

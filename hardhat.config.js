@@ -70,5 +70,8 @@ module.exports = {
             },
         ],
     },
+    typechain: {
+        target: 'ethers-v6',
+        outDir: 'artifacts/types',
+    },
 }
-

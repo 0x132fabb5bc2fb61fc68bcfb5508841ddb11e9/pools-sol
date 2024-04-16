@@ -1,3 +1,5 @@
+const { bytecode } = require('../artifacts/contracts/PrivacyPool.sol/PrivacyPool.json')
+
 async function impersonateAccount(account) {
     await hre.network.provider.request({
         method: "hardhat_impersonateAccount",
@@ -85,7 +87,32 @@ async function deployBytes(contractName, abi, bytecode, verbose = false, overrid
     return contract;
 }
 
+function getPoolAddress({
+    poseidonAddress,
+    assetAddress,
+    denomination,
+    factoryAddress,
+    index,
+}) {
+    // encode
+    const encodedArgs = hre.ethers.utils.defaultAbiCoder.encode(
+        ['address', 'address', 'uint256'],
+        [poseidonAddress, assetAddress, denomination],
+    ).replace('0x', '')
+    // encodePacked
+    const saltInput = hre.ethers.utils.solidityPack(
+        ['address', 'uint256', 'uint256'],
+        [assetAddress, denomination, index],
+    )
+    return hre.ethers.utils.getCreate2Address(
+        factoryAddress,
+        hre.ethers.utils.keccak256(saltInput),
+        hre.ethers.utils.keccak256(bytecode + encodedArgs),
+    )
+}
+
 Object.assign(module.exports, {
+    getPoolAddress,
     impersonateAccount,
     stopImpersonatingAccount,
     enableForking,
