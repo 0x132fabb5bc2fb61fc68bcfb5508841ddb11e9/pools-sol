@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "es2020",
+    "module": "commonjs",
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "allowJs": true,
+    "checkJs": false,
+    "inlineSourceMap": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  }
+}
